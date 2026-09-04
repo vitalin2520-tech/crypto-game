@@ -3,82 +3,232 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Crypto Tycoon</title>
-    <!-- Официальный скрипт Telegram Web App -->
+    <title>Crypto Poker</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
-            background-color: var(--tg-theme-bg-color, #121212);
-            color: var(--tg-theme-text-color, #ffffff);
+            background-color: #0d1b2a;
+            color: #ffffff;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: space-between;
             height: 100vh;
             margin: 0;
-            text-align: center;
+            padding: 20px 0;
+            box-sizing: border-box;
             user-select: none;
             -webkit-user-select: none;
         }
-        .counter {
-            font-size: 42px;
-            font-weight: 800;
-            margin-bottom: 30px;
-            letter-spacing: 1px;
+        h2 { margin: 0; color: #e0a96d; }
+        .balance {
+            font-size: 22px;
+            font-weight: bold;
+            background: #1b263b;
+            padding: 8px 20px;
+            border-radius: 20px;
+            border: 1px solid #415a77;
         }
-        .coin-btn {
-            background: linear-gradient(135deg, #f39c12, #d35400);
-            border: none;
-            border-radius: 50%;
-            width: 200px;
-            height: 200px;
-            font-size: 70px;
-            cursor: pointer;
-            box-shadow: 0 12px 30px rgba(243, 156, 18, 0.4);
-            transition: transform 0.08s ease;
+        .cards-container {
             display: flex;
-            align-items: center;
+            gap: 8px;
             justify-content: center;
+        }
+        .card {
+            width: 55px;
+            height: 80px;
+            background: #ffffff;
+            color: #000;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 5px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            position: relative;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: transform 0.2s;
+        }
+        .card.red { color: #d90429; }
+        .card.held {
+            transform: translateY(-15px);
+            border: 2px solid #ffb703;
+            box-shadow: 0 8px 15px rgba(255, 183, 3, 0.4);
+        }
+        .held-label {
+            font-size: 10px;
+            background: #ffb703;
+            color: #000;
+            text-align: center;
+            border-radius: 3px;
+            display: none;
+        }
+        .card.held .held-label { display: block; }
+        .message {
+            font-size: 16px;
+            height: 24px;
+            color: #48cae4;
+            font-weight: 600;
+        }
+        .btn {
+            background: linear-gradient(135deg, #f77f00, #d62828);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 14px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(214, 40, 40, 0.4);
             outline: none;
         }
-        .coin-btn:active {
-            transform: scale(0.90);
-            box-shadow: 0 6px 15px rgba(243, 156, 18, 0.3);
-        }
-        .info {
-            margin-top: 40px;
-            font-size: 15px;
-            opacity: 0.6;
-        }
+        .btn:active { transform: scale(0.95); }
     </style>
 </head>
 <body>
 
-    <div class="counter" id="score">0 COINS</div>
-    
-    <button class="coin-btn" id="tapBtn">🪙</button>
-    
-    <div class="info">Тапай по монете, чтобы майнить!</div>
+    <h2>🃏 Crypto Poker</h2>
+    <div class="balance" id="balance">Баланс: 100 🪙</div>
+
+    <div class="cards-container" id="cards">
+        <!-- Карты генерируются через JS -->
+    </div>
+
+    <div class="message" id="msg">Нажми «Раздать», ставка: 10 🪙</div>
+
+    <button class="btn" id="actionBtn" onclick="onBtnClick()">РАЗДАТЬ</button>
 
     <script>
-        // Инициализация Telegram Web App
         let tg = window.Telegram.WebApp;
-        tg.expand(); // Разворачиваем на полный экран
+        tg.expand();
 
-        let score = 0;
-        const scoreElement = document.getElementById('score');
-        const tapBtn = document.getElementById('tapBtn');
+        let balance = 100;
+        let deck = [];
+        let hand = [];
+        let held = [false, false, false, false, false];
+        let gameState = 'deal'; // 'deal' или 'draw'
 
-        tapBtn.addEventListener('click', () => {
-            score += 1;
-            scoreElement.innerText = score + " COINS";
-            
-            // Легкая вибрация при клике на телефоне
-            if (tg.HapticFeedback) {
-                tg.HapticFeedback.impactOccurred('light');
+        const suits = ['♠', '♣', '♥', '♦'];
+        const values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+
+        function createDeck() {
+            deck = [];
+            for(let s of suits) {
+                for(let v of values) {
+                    deck.push({ suit: s, value: v, isRed: (s === '♥' || s === '♦') });
+                }
             }
-        });
+            // Перемешивание
+            deck.sort(() => Math.random() - 0.5);
+        }
+
+        function renderHand() {
+            const container = document.getElementById('cards');
+            container.innerHTML = '';
+            hand.forEach((card, index) => {
+                const div = document.createElement('div');
+                div.className = `card ${card.isRed ? 'red' : ''} ${held[index] ? 'held' : ''}`;
+                div.innerHTML = `
+                    <span>${card.value}</span>
+                    <div style="text-align:center; font-size: 22px;">${card.suit}</div>
+                    <div>
+                        <div class="held-label">HOLD</div>
+                        <span style="align-self: flex-end; transform: rotate(180deg); display:inline-block;">${card.value}</span>
+                    </div>
+                `;
+                if(gameState === 'draw') {
+                    div.onclick = () => toggleHold(index);
+                }
+                container.appendChild(div);
+            });
+        }
+
+        function toggleHold(index) {
+            held[index] = !held[index];
+            renderHand();
+            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+
+        function onBtnClick() {
+            if (gameState === 'deal') {
+                if (balance < 10) {
+                    document.getElementById('msg').innerText = "Недостаточно монет!";
+                    return;
+                }
+                balance -= 10;
+                updateBalance();
+                
+                createDeck();
+                hand = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()];
+                held = [false, false, false, false, false];
+                
+                gameState = 'draw';
+                document.getElementById('actionBtn').innerText = "ОБМЕНЯТЬ / ИГРАТЬ";
+                document.getElementById('msg').innerText = "Выбери карты для HOLD и жми обмен";
+                renderHand();
+            } else {
+                // Заменяем не сохраненные карты
+                for(let i = 0; i < 5; i++) {
+                    if(!held[i]) {
+                        hand[i] = deck.pop();
+                    }
+                }
+                
+                // Проверяем комбинацию
+                let win = checkCombination();
+                if(win > 0) {
+                    balance += win;
+                    document.getElementById('msg').innerText = `🎉 Выигрыш: +${win} монет!`;
+                } else {
+                    document.getElementById('msg').innerText = "Эх, повезет в следующий раз!";
+                }
+                
+                updateBalance();
+                gameState = 'deal';
+                document.getElementById('actionBtn').innerText = "РАЗДАТЬ";
+                renderHand();
+            }
+            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+        }
+
+        function updateBalance() {
+            document.getElementById('balance').innerText = `Баланс: ${balance} 🪙`;
+        }
+
+        function checkCombination() {
+            // Простейшая проверка на пары и тройки для примера
+            let vals = hand.map(c => c.value);
+            let counts = {};
+            vals.forEach(v => counts[v] = (counts[v] || 0) + 1);
+            
+            let valuesArr = Object.values(counts);
+            if(valuesArr.includes(4)) return 50; // Каре
+            if(valuesArr.includes(3) && valuesArr.includes(2)) return 30; // Фулл хаус
+            if(valuesArr.includes(3)) return 15; // Тройка
+            
+            let pairs = valuesArr.filter(c => c === 2).length;
+            if(pairs === 2) return 10; // Две пары
+            if(pairs === 1) {
+                // Проверяем старшая ли пара (J, Q, K, A)
+                for(let k in counts) {
+                    if(counts[k] === 2 && ['J','Q','K','A'].includes(k)) return 5;
+                }
+            }
+            return 0;
+        }
+
+        // Первичная раздача пустых карт для красоты
+        hand = [
+            {value:'P', suit:'♠', isRed:false},
+            {value:'O', suit:'♣', isRed:false},
+            {value:'K', suit:'♥', isRed:true},
+            {value:'E', suit:'♦', isRed:true},
+            {value:'R', suit:'♠', isRed:false}
+        ];
+        renderHand();
     </script>
 </body>
 </html>
